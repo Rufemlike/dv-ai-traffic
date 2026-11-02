@@ -179,6 +179,7 @@ namespace AITraffic.Navigation
                 {
                     signal.Block.FlagAsDirty();
                 }
+                signal.Controller.UpdateBlocks();
                 signal.Controller.Update(true, true);
             }
             catch { }
@@ -618,7 +619,43 @@ namespace AITraffic.Navigation
         /// </summary>
         public static bool IsDistantSignal(DVSignal signal)
         {
-            return signal != null && !IsGoverningSignal(signal);
+            if (signal == null) return false;
+            if (signal.Parent != null) signal = signal.Parent;
+
+            int ruRole;
+            if (ModCompatManager.TryGetRuSignalRole(signal, out ruRole))
+            {
+                if (ruRole == 4 || ruRole == 5) return true; // Distant or Repeater
+            }
+
+            return !IsGoverningSignal(signal);
+        }
+
+        /// <summary>
+        /// Checks whether a signal acts as an automatic block through/spacing signal (проходной светофор автоблокировки).
+        /// </summary>
+        public static bool IsAutoBlockSignal(DVSignal signal)
+        {
+            if (signal == null) return false;
+            if (signal.Parent != null) signal = signal.Parent;
+
+            int ruRole;
+            if (ModCompatManager.TryGetRuSignalRole(signal, out ruRole))
+            {
+                if (ruRole == 0) return true; // Through
+            }
+
+            if (signal.Controller != null)
+            {
+                if (signal.Controller.GetType().Name == "AutoController") return true;
+                if (signal.Controller.Type == Signals.Game.SignalType.Spacing ||
+                    signal.Controller.PrefabType == Signals.Game.PrefabType.Spacing)
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         /// <summary>
@@ -661,6 +698,13 @@ namespace AITraffic.Navigation
             if (signal == null) return false;
             if (signal.Parent != null) signal = signal.Parent;
 
+            // 0. RuSignals Role inspection (Role == 1 is Entry / Входной)
+            int ruRole;
+            if (ModCompatManager.TryGetRuSignalRole(signal, out ruRole))
+            {
+                if (ruRole == 1) return true;
+            }
+
             // 1. DVSignals controller Type & PrefabType classification
             if (signal.Controller != null)
             {
@@ -689,7 +733,11 @@ namespace AITraffic.Navigation
                 if (name.IndexOf("Esig", StringComparison.OrdinalIgnoreCase) >= 0 ||
                     name.IndexOf("E-Sig", StringComparison.OrdinalIgnoreCase) >= 0 ||
                     name.IndexOf("Entry", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                    name.IndexOf("Einfahr", StringComparison.OrdinalIgnoreCase) >= 0)
+                    name.IndexOf("Einfahr", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                    (ModCompatManager.IsRuSignalsLoaded && (name.Equals("Ч", StringComparison.OrdinalIgnoreCase) ||
+                                                           name.Equals("Н", StringComparison.OrdinalIgnoreCase) ||
+                                                           name.StartsWith("ЧД", StringComparison.OrdinalIgnoreCase) ||
+                                                           name.StartsWith("НД", StringComparison.OrdinalIgnoreCase))))
                 {
                     return true;
                 }
@@ -718,6 +766,13 @@ namespace AITraffic.Navigation
         {
             if (signal == null) return false;
             if (signal.Parent != null) signal = signal.Parent;
+
+            // 0. RuSignals Role inspection (Role == 2 is Exit / Выходной, Role == 3 is Route / Маршрутный)
+            int ruRole;
+            if (ModCompatManager.TryGetRuSignalRole(signal, out ruRole))
+            {
+                if (ruRole == 2 || ruRole == 3) return true;
+            }
 
             // 1. DVSignals controller Type & PrefabType classification
             if (signal.Controller != null)
@@ -819,6 +874,16 @@ namespace AITraffic.Navigation
             if (signal == null) return false;
             if (signal.Parent != null) signal = signal.Parent;
 
+            if (ModCompatManager.IsRuSignalsLoaded)
+            {
+                // In RuSignals: AutoBlock (Through) signals cannot be reserved with TrackReserver
+                if (IsAutoBlockSignal(signal)) return false;
+                // In RuSignals: Entry signals open automatically on switch alignment without TrackReserver reservation
+                if (IsEntrySignal(signal)) return false;
+                // Exit signals do require route reservation
+                if (IsExitSignal(signal)) return true;
+            }
+
             if (IsEntrySignal(signal)) return true;
 
             if (IsExitSignal(signal))
@@ -852,11 +917,20 @@ namespace AITraffic.Navigation
             string id = signal.CurrentAspect.Id ?? string.Empty;
             bool disallow = signal.CurrentAspect.DisallowPassing;
 
+            if (id.IndexOf("CAUTION_FLASHING", StringComparison.OrdinalIgnoreCase) >= 0)
+                return "Жёлтый мигающий (Yellow Flashing)";
+            if (id.IndexOf("DIVERGING_OPEN", StringComparison.OrdinalIgnoreCase) >= 0)
+                return "Два жёлтых (верхний мигающий) (Diverging Clear)";
+            if (id.IndexOf("DIVERGING_CAUTION", StringComparison.OrdinalIgnoreCase) >= 0 || id.IndexOf("DIVERGING", StringComparison.OrdinalIgnoreCase) >= 0)
+                return "Два жёлтых (Diverging Caution)";
+            if (id.IndexOf("INVITATION", StringComparison.OrdinalIgnoreCase) >= 0)
+                return "Пригласительный (Invitation / 20 km/h)";
+
             if (disallow || id.IndexOf("HP0", StringComparison.OrdinalIgnoreCase) >= 0 || id.IndexOf("STOP", StringComparison.OrdinalIgnoreCase) >= 0)
                 return "Hp 0 (Red / Stop)";
             if (id.IndexOf("HP2", StringComparison.OrdinalIgnoreCase) >= 0 || id.IndexOf("YELLOW", StringComparison.OrdinalIgnoreCase) >= 0 || id.IndexOf("CAUTION", StringComparison.OrdinalIgnoreCase) >= 0)
                 return "Hp 2 (Yellow / Slow)";
-            if (id.IndexOf("HP1", StringComparison.OrdinalIgnoreCase) >= 0 || id.IndexOf("GREEN", StringComparison.OrdinalIgnoreCase) >= 0 || id.IndexOf("CLEAR", StringComparison.OrdinalIgnoreCase) >= 0)
+            if (id.IndexOf("HP1", StringComparison.OrdinalIgnoreCase) >= 0 || id.IndexOf("GREEN", StringComparison.OrdinalIgnoreCase) >= 0 || id.IndexOf("CLEAR", StringComparison.OrdinalIgnoreCase) >= 0 || id.IndexOf("OPEN", StringComparison.OrdinalIgnoreCase) >= 0)
                 return "Hp 1 (Green / Clear)";
             if (id.IndexOf("SH0", StringComparison.OrdinalIgnoreCase) >= 0)
                 return "Sh 0 (Red / Stop)";
@@ -882,11 +956,18 @@ namespace AITraffic.Navigation
             string id = signal.CurrentAspect.Id ?? string.Empty;
             bool disallow = signal.CurrentAspect.DisallowPassing;
 
+            if (id.IndexOf("INVITATION", StringComparison.OrdinalIgnoreCase) >= 0)
+                return "#88E0FF";
+            if (id.IndexOf("SHUNTING_OPEN", StringComparison.OrdinalIgnoreCase) >= 0)
+                return "#E0E0FF";
+            if (id.IndexOf("CAUTION_FLASHING", StringComparison.OrdinalIgnoreCase) >= 0 || id.IndexOf("DIVERGING", StringComparison.OrdinalIgnoreCase) >= 0)
+                return "#FFD700";
+
             if (disallow || id.IndexOf("HP0", StringComparison.OrdinalIgnoreCase) >= 0 || id.IndexOf("STOP", StringComparison.OrdinalIgnoreCase) >= 0 || id.IndexOf("SH0", StringComparison.OrdinalIgnoreCase) >= 0 || id.IndexOf("VR0", StringComparison.OrdinalIgnoreCase) >= 0)
                 return "#FF4444";
             if (id.IndexOf("HP2", StringComparison.OrdinalIgnoreCase) >= 0 || id.IndexOf("YELLOW", StringComparison.OrdinalIgnoreCase) >= 0 || id.IndexOf("CAUTION", StringComparison.OrdinalIgnoreCase) >= 0 || id.IndexOf("VR2", StringComparison.OrdinalIgnoreCase) >= 0)
                 return "#FFD700";
-            if (id.IndexOf("HP1", StringComparison.OrdinalIgnoreCase) >= 0 || id.IndexOf("GREEN", StringComparison.OrdinalIgnoreCase) >= 0 || id.IndexOf("CLEAR", StringComparison.OrdinalIgnoreCase) >= 0 || id.IndexOf("VR1", StringComparison.OrdinalIgnoreCase) >= 0)
+            if (id.IndexOf("HP1", StringComparison.OrdinalIgnoreCase) >= 0 || id.IndexOf("GREEN", StringComparison.OrdinalIgnoreCase) >= 0 || id.IndexOf("CLEAR", StringComparison.OrdinalIgnoreCase) >= 0 || id.IndexOf("OPEN", StringComparison.OrdinalIgnoreCase) >= 0 || id.IndexOf("VR1", StringComparison.OrdinalIgnoreCase) >= 0)
                 return "#00FF88";
             if (id.IndexOf("SH1", StringComparison.OrdinalIgnoreCase) >= 0 || id.IndexOf("WHITE", StringComparison.OrdinalIgnoreCase) >= 0)
                 return "#E0E0FF";
@@ -904,11 +985,18 @@ namespace AITraffic.Navigation
             string id = signal.CurrentAspect.Id ?? string.Empty;
             bool disallow = signal.CurrentAspect.DisallowPassing;
 
+            if (id.IndexOf("INVITATION", StringComparison.OrdinalIgnoreCase) >= 0)
+                return new Color(0.55f, 0.9f, 1.0f);
+            if (id.IndexOf("SHUNTING_OPEN", StringComparison.OrdinalIgnoreCase) >= 0)
+                return new Color(0.9f, 0.9f, 1.0f);
+            if (id.IndexOf("CAUTION_FLASHING", StringComparison.OrdinalIgnoreCase) >= 0 || id.IndexOf("DIVERGING", StringComparison.OrdinalIgnoreCase) >= 0)
+                return new Color(1.0f, 0.85f, 0.1f);
+
             if (disallow || id.IndexOf("HP0", StringComparison.OrdinalIgnoreCase) >= 0 || id.IndexOf("STOP", StringComparison.OrdinalIgnoreCase) >= 0 || id.IndexOf("SH0", StringComparison.OrdinalIgnoreCase) >= 0 || id.IndexOf("VR0", StringComparison.OrdinalIgnoreCase) >= 0)
                 return new Color(1.0f, 0.25f, 0.25f);
             if (id.IndexOf("HP2", StringComparison.OrdinalIgnoreCase) >= 0 || id.IndexOf("YELLOW", StringComparison.OrdinalIgnoreCase) >= 0 || id.IndexOf("CAUTION", StringComparison.OrdinalIgnoreCase) >= 0 || id.IndexOf("VR2", StringComparison.OrdinalIgnoreCase) >= 0)
                 return new Color(1.0f, 0.85f, 0.1f);
-            if (id.IndexOf("HP1", StringComparison.OrdinalIgnoreCase) >= 0 || id.IndexOf("GREEN", StringComparison.OrdinalIgnoreCase) >= 0 || id.IndexOf("CLEAR", StringComparison.OrdinalIgnoreCase) >= 0 || id.IndexOf("VR1", StringComparison.OrdinalIgnoreCase) >= 0)
+            if (id.IndexOf("HP1", StringComparison.OrdinalIgnoreCase) >= 0 || id.IndexOf("GREEN", StringComparison.OrdinalIgnoreCase) >= 0 || id.IndexOf("CLEAR", StringComparison.OrdinalIgnoreCase) >= 0 || id.IndexOf("OPEN", StringComparison.OrdinalIgnoreCase) >= 0 || id.IndexOf("VR1", StringComparison.OrdinalIgnoreCase) >= 0)
                 return new Color(0.0f, 1.0f, 0.55f);
             if (id.IndexOf("SH1", StringComparison.OrdinalIgnoreCase) >= 0 || id.IndexOf("WHITE", StringComparison.OrdinalIgnoreCase) >= 0)
                 return new Color(0.9f, 0.9f, 1.0f);

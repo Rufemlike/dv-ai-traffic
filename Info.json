@@ -14,7 +14,7 @@
     "PassengerJobs",
     "PersistentJobsMod",
     "SelfShunt",
-    "ZCouplers"
+    "ru.signals"
   ],
   "EntryMethod": "AITraffic.Main.Load",
   "AssemblyName": "AITraffic.dll"

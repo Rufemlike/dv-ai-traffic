@@ -536,7 +536,25 @@ namespace AITraffic.Driver
                 return Mathf.Max(25.0f, speedKmh);
             }
 
-            // 3. Main Signal Aspect Classification
+            // 3. Russian Signals specific aspects
+            if (id.Contains("CAUTION_FLASHING"))
+            {
+                return lineSpeedKmh; // Yellow flashing allows established line speed
+            }
+            if (id.Contains("INVITATION"))
+            {
+                return 20.0f; // 20 km/h per Russian railway rules
+            }
+            if (id.Contains("SHUNTING_OPEN"))
+            {
+                return 25.0f;
+            }
+            if (id.Contains("OPEN") && !id.Contains("DIVERGING"))
+            {
+                return lineSpeedKmh;
+            }
+
+            // 4. Main Signal Aspect Classification
             if (id.Contains("RESTRICT") || id.Contains("HP2") || id.Contains("YELLOW") ||
                 id.Contains("SLOW") || id.Contains("CAUTION") || id.Contains("DIVERGING"))
             {
@@ -564,7 +582,8 @@ namespace AITraffic.Driver
             }
 
             if (id.Contains("NEXT_RESTRICTED") || id.Contains("VR2") || id.Contains("NEXT_CAUTION") ||
-                id.Contains("NEXT_SLOW") || id.Contains("NEXT_DIVERGING") || id.Contains("DISTANT_CAUTION"))
+                id.Contains("NEXT_SLOW") || id.Contains("NEXT_DIVERGING") || id.Contains("DISTANT_CAUTION") ||
+                id.Contains("CAUTION_FLASHING") || id.Contains("DIVERGING_OPEN") || id.Contains("DIVERGING_CAUTION"))
             {
                 targetSpeedKmh = DefaultYellowSignalSpeedKmh; // 40 km/h
                 return true;

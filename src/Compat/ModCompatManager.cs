@@ -48,6 +48,7 @@ namespace AITraffic.Compat
         private const string ModIdYardMaster = "YardMaster";
         private const string ModIdPassengerJobs = "PassengerJobs";
         private const string ModIdZCouplers = "ZCouplers";
+        private const string ModIdRuSignals = "ru.signals";
 
         #region Presence Checks
 
@@ -143,6 +144,63 @@ namespace AITraffic.Compat
             }
         }
 
+        /// <summary>
+        /// True if RuSignals (Russian / Soviet signal system) is installed and active.
+        /// </summary>
+        public static bool IsRuSignalsLoaded
+        {
+            get
+            {
+                var mod = UnityModManager.FindMod(ModIdRuSignals);
+                return mod != null && mod.Active;
+            }
+        }
+
+        private static FieldInfo s_ruAspectRoleField = null;
+        private static bool s_ruRoleFieldResolved = false;
+
+        /// <summary>
+        /// Attempts to extract the Russian signal role from RuAspectDefinition if RuSignals is active.
+        /// Roles: 0 = Through (Проходной), 1 = Entry (Входной), 2 = Exit (Выходной), 3 = Route (Маршрутный),
+        ///        4 = Distant (Предупредительный), 5 = Repeater (Повторительный), 6 = Shunting (Маневровый),
+        ///        7 = Turntable, 8 = BufferStop.
+        /// Returns true if successfully resolved.
+        /// </summary>
+        public static bool TryGetRuSignalRole(Signals.Game.Signal signal, out int role)
+        {
+            role = -1;
+            if (!IsRuSignalsLoaded || signal == null) return false;
+            var effSig = signal.Parent != null ? signal.Parent : signal;
+            if (effSig.AllAspects == null || effSig.AllAspects.Length == 0) return false;
+
+            for (int i = 0; i < effSig.AllAspects.Length; i++)
+            {
+                var asp = effSig.AllAspects[i];
+                if (asp == null) continue;
+                var def = asp.GetDefinition();
+                if (def == null) continue;
+                var defType = def.GetType();
+                if (defType.Name == "RuAspectDefinition" || defType.FullName == "RuSignals.RuAspectDefinition")
+                {
+                    if (!s_ruRoleFieldResolved)
+                    {
+                        s_ruAspectRoleField = defType.GetField("Role", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+                        s_ruRoleFieldResolved = true;
+                    }
+                    if (s_ruAspectRoleField != null)
+                    {
+                        object val = s_ruAspectRoleField.GetValue(def);
+                        if (val != null)
+                        {
+                            role = (int)val;
+                            return true;
+                        }
+                    }
+                }
+            }
+            return false;
+        }
+
         #endregion
 
         #region Initialization
@@ -164,6 +222,7 @@ namespace AITraffic.Compat
                     Main.LogDebug(string.Format("   • SelfShunt (YardMaster): {0}", IsYardMasterLoaded ? "Active [Active Yard Protection Enabled]" : "Not Detected"));
                     Main.LogDebug(string.Format("   • PassengerJobs: {0}", IsPassengerJobsLoaded ? "Active [Passenger Platform Routing Enabled]" : "Not Detected"));
                     Main.LogDebug(string.Format("   • ZCouplers: {0}", IsZCouplersLoaded ? "Active [Coupler Stress Exemption Enabled]" : "Not Detected"));
+                    Main.LogDebug(string.Format("   • RuSignals: {0}", IsRuSignalsLoaded ? "Active [Russian Signaling Interlocking Enabled]" : "Not Detected"));
                 }
 
                 if (IsPersistentJobsLoaded)

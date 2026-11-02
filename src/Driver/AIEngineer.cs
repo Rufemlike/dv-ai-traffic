@@ -2179,7 +2179,9 @@ namespace AITraffic.Driver
 				if (!flag5 && ApproachingSignal != null && SignalRegistry.IsDistantSignal(ApproachingSignal) && ApproachingSignal.CurrentAspect != null)
 				{
 					string text3 = ApproachingSignal.CurrentAspect.Id ?? "";
-					if (text3.IndexOf("VR0", StringComparison.OrdinalIgnoreCase) >= 0 || text3.IndexOf("DISTANT_STOP", StringComparison.OrdinalIgnoreCase) >= 0)
+					if (text3.IndexOf("VR0", StringComparison.OrdinalIgnoreCase) >= 0 ||
+					    text3.IndexOf("DISTANT_STOP", StringComparison.OrdinalIgnoreCase) >= 0 ||
+					    (ModCompatManager.IsRuSignalsLoaded && text3.IndexOf("CAUTION", StringComparison.OrdinalIgnoreCase) >= 0 && text3.IndexOf("FLASHING", StringComparison.OrdinalIgnoreCase) < 0))
 					{
 						flag5 = true;
 					}
@@ -2254,7 +2256,13 @@ namespace AITraffic.Driver
 							_signalWaitRetryTimer = 5f;
 							if (!(CurrentSpeedKmh < 1.5f) || !(DistanceToObstacle < 150f))
 							{
-								if (SignalRegistry.TryReserveDVSignal(signal))
+								if (SignalRegistry.IsAutoBlockSignal(signal))
+								{
+									// RuSignals automatic block signals cannot be reserved via TrackReserver;
+									// wake and force update so RuSignals re-evaluates clearance once train ahead leaves.
+									DebouncedWakeAndForceUpdateSignal(signal);
+								}
+								else if (SignalRegistry.TryReserveDVSignal(signal))
 								{
 									DebouncedWakeAndForceUpdateSignal(signal);
 									Signals.Game.Signal signal4 = ((signal != null && signal.Parent != null) ? signal.Parent : signal);
@@ -2262,6 +2270,11 @@ namespace AITraffic.Driver
 									{
 										_reservedDVSignals.Add(signal4);
 									}
+								}
+								else if (ModCompatManager.IsRuSignalsLoaded && SignalRegistry.IsEntrySignal(signal))
+								{
+									// RuSignals Entry signals open automatically on switch alignment without reservation.
+									DebouncedWakeAndForceUpdateSignal(signal);
 								}
 							}
 							else if (signal != null)
@@ -2875,11 +2888,12 @@ namespace AITraffic.Driver
 					{
 						Main.ModEntry.Logger.Log(string.Format("[AITraffic] Train '{0}' held at Entry Signal '{1}' with Hp 0. Purged downstream reservations ({2} signals). Retrying Entry Signal...", LocoId, SignalRegistry.GetSignalName(signal5), hashSet.Count + num29));
 					}
-					if (SignalRegistry.TryReserveDVSignal(signal5))
+					bool reservedEntry = SignalRegistry.TryReserveDVSignal(signal5);
+					if (reservedEntry || (ModCompatManager.IsRuSignalsLoaded && !SignalRegistry.RequiresRouteReservation(signal5)))
 					{
 						DebouncedWakeAndForceUpdateSignal(signal5);
 						Signals.Game.Signal signal7 = ((signal5 != null && signal5.Parent != null) ? signal5.Parent : signal5);
-						if (signal7 != null && !_reservedDVSignals.Contains(signal7))
+						if (signal7 != null && reservedEntry && !_reservedDVSignals.Contains(signal7))
 						{
 							_reservedDVSignals.Add(signal7);
 						}
@@ -2904,11 +2918,13 @@ namespace AITraffic.Driver
 				}
 				else if (signal5 != null)
 				{
-					if (SignalRegistry.TryReserveDVSignal(signal5))
+					bool isAutoBlock = SignalRegistry.IsAutoBlockSignal(signal5);
+					bool reservedSig = (!isAutoBlock && SignalRegistry.TryReserveDVSignal(signal5));
+					if (reservedSig || isAutoBlock || (ModCompatManager.IsRuSignalsLoaded && !SignalRegistry.RequiresRouteReservation(signal5)))
 					{
 						DebouncedWakeAndForceUpdateSignal(signal5);
 						Signals.Game.Signal signal7 = ((signal5 != null && signal5.Parent != null) ? signal5.Parent : signal5);
-						if (signal7 != null && !_reservedDVSignals.Contains(signal7))
+						if (signal7 != null && reservedSig && !_reservedDVSignals.Contains(signal7))
 						{
 							_reservedDVSignals.Add(signal7);
 						}

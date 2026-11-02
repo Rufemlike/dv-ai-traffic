@@ -11,6 +11,7 @@
     <AssemblyName>AITraffic</AssemblyName>
     <TargetFrameworkVersion>v4.8</TargetFrameworkVersion>
     <FileAlignment>512</FileAlignment>
+    <DVInstallPath Condition=" '$(DVInstallPath)' == '' and Exists('C:\Users\Michail\games\Derail_Valley_Build_99.7') ">C:\Users\Michail\games\Derail_Valley_Build_99.7</DVInstallPath>
     <DVInstallPath Condition=" '$(DVInstallPath)' == '' and Exists('C:\Program Files (x86)\Steam\steamapps\common\Derail Valley') ">C:\Program Files (x86)\Steam\steamapps\common\Derail Valley</DVInstallPath>
     <DVInstallPath Condition=" '$(DVInstallPath)' == '' and Exists('J:\SteamLibrary\steamapps\common\Derail Valley') ">J:\SteamLibrary\steamapps\common\Derail Valley</DVInstallPath>
     <DVInstallPath Condition=" '$(DVInstallPath)' == '' ">C:\Program Files (x86)\Steam\steamapps\common\Derail Valley</DVInstallPath>
